@@ -747,6 +747,132 @@ Sample output:
 
 .. _bfd-debugging:
 
+.. _bfd-micro-bfd:
+
+Micro-BFD over LAG (RFC 7130)
+=============================
+
+:abbr:`Micro-BFD` (:rfc:`7130`) provides bidirectional forwarding detection
+on individual member links of a Link Aggregation Group (LAG). This allows
+rapid failure detection on LAG member links, enabling the bonding/teaming
+driver to quickly remove failed members from the aggregation.
+
+When a Micro-BFD session detects a failure on a member link, it uses the
+Linux kernel protodown mechanism to signal that the link should be removed
+from the LAG, even if the physical link is still up.
+
+Micro-BFD LAG Commands
+----------------------
+
+.. clicmd:: lag LAGNAME [vrf NAME]
+
+   Enter Micro-BFD LAG configuration mode for the specified LAG interface.
+   This creates a new LAG configuration if it doesn't exist.
+
+.. clicmd:: no lag LAGNAME [vrf NAME]
+
+   Remove the Micro-BFD LAG configuration.
+
+Micro-BFD LAG Mode Commands
+---------------------------
+
+The following commands are available within the LAG configuration mode
+(``config-bfd-lag``):
+
+.. clicmd:: member-link IFNAME
+
+   Add a member link to the LAG and enter member configuration mode.
+   This creates an independent BFD session for the specified interface.
+
+.. clicmd:: no member-link IFNAME
+
+   Remove a member link from the LAG configuration.
+
+.. clicmd:: detect-multiplier (2-255)
+
+   Configure the detection multiplier for all member sessions. The default
+   value is 3.
+
+.. clicmd:: transmit-interval (10-4294967)
+
+   Configure the transmit interval in milliseconds for all member sessions.
+   The default value is 300ms.
+
+.. clicmd:: receive-interval (10-4294967)
+
+   Configure the receive interval in milliseconds for all member sessions.
+   The default value is 300ms.
+
+.. clicmd:: profile BFDPROF
+
+   Apply a BFD profile to all member sessions.
+
+.. clicmd:: shutdown
+
+   Administratively disable all Micro-BFD sessions on this LAG.
+
+Micro-BFD Member Mode Commands
+------------------------------
+
+The following commands are available within the member configuration mode
+(``config-bfd-lag-member``):
+
+.. clicmd:: local-address <A.B.C.D|X:X::X:X>
+
+   Configure the local IP address for the BFD session on this member link.
+   Both IPv4 and IPv6 addresses are supported.
+
+.. clicmd:: peer-address <A.B.C.D|X:X::X:X>
+
+   Configure the peer IP address for the BFD session on this member link.
+   Both IPv4 and IPv6 addresses are supported.
+
+Micro-BFD Show Commands
+-----------------------
+
+.. clicmd:: show bfd lag [LAGNAME] [json]
+
+   Display Micro-BFD LAG information. If LAGNAME is specified, shows only
+   that LAG.
+
+.. clicmd:: show bfd lag LAGNAME members [json]
+
+   Display member link information for the specified LAG.
+
+Micro-BFD Configuration Example
+-------------------------------
+
+The following example configures Micro-BFD on a LAG with two member links:
+
+::
+
+   bfd
+    lag bond0
+     detect-multiplier 3
+     transmit-interval 100
+     receive-interval 100
+     !
+     member-link eth0
+      local-address 169.254.0.1
+      peer-address 169.254.0.2
+      exit
+     !
+     member-link eth1
+      local-address 169.254.1.1
+      peer-address 169.254.1.2
+      exit
+     !
+    exit
+   !
+
+In this configuration:
+
+- ``bond0`` is the LAG interface name
+- ``eth0`` and ``eth1`` are the member links
+- Each member has its own local and peer addresses
+- Detection time is 3 * 100ms = 300ms
+
+
 Debugging
 =========
 

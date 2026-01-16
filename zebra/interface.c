@@ -2651,6 +2651,9 @@ const char *zebra_protodown_rc_str(uint32_t protodown_rc, char *pd_buf,
 	if (CHECK_FLAG(protodown_rc, ZEBRA_PROTODOWN_SHARP))
 		strlcat(pd_buf, "sharp,", pd_buf_len);
 
+	if (CHECK_FLAG(protodown_rc, ZEBRA_PROTODOWN_MICRO_BFD))
+		strlcat(pd_buf, "micro-bfd,", pd_buf_len);
+
 	len = strnlen(pd_buf, pd_buf_len);
 
 	/* Remove trailing comma */

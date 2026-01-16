@@ -971,6 +971,162 @@ const struct frr_yang_module_info frr_bfdd_info = {
 				.get_elem = bfdd_bfd_sessions_single_hop_stats_echo_packet_output_count_get_elem,
 			}
 		},
+		/*
+		 * Micro-BFD LAG (RFC 7130)
+		 */
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag",
+			.cbs = {
+				.create = bfdd_bfd_lag_create,
+				.destroy = bfdd_bfd_lag_destroy,
+				.get_next = bfdd_bfd_lag_get_next,
+				.get_keys = bfdd_bfd_lag_get_keys,
+				.lookup_entry = bfdd_bfd_lag_lookup_entry,
+				.cli_show = bfd_cli_show_lag,
+				.cli_show_end = bfd_cli_show_lag_end,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/profile",
+			.cbs = {
+				.modify = bfdd_bfd_lag_profile_modify,
+				.destroy = bfdd_bfd_lag_profile_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/detection-multiplier",
+			.cbs = {
+				.modify = bfdd_bfd_lag_detection_multiplier_modify,
+				.cli_show = bfd_cli_show_mult,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/desired-transmission-interval",
+			.cbs = {
+				.modify = bfdd_bfd_lag_desired_transmission_interval_modify,
+				.cli_show = bfd_cli_show_tx,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/required-receive-interval",
+			.cbs = {
+				.modify = bfdd_bfd_lag_required_receive_interval_modify,
+				.cli_show = bfd_cli_show_rx,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/administrative-down",
+			.cbs = {
+				.modify = bfdd_bfd_lag_administrative_down_modify,
+				.cli_show = bfd_cli_show_shutdown,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link",
+			.cbs = {
+				.create = bfdd_bfd_lag_member_link_create,
+				.destroy = bfdd_bfd_lag_member_link_destroy,
+				.get_next = bfdd_bfd_lag_member_link_get_next,
+				.get_keys = bfdd_bfd_lag_member_link_get_keys,
+				.lookup_entry = bfdd_bfd_lag_member_link_lookup_entry,
+				.cli_show = bfd_cli_show_lag_member_link,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/local-address",
+			.cbs = {
+				.modify = bfdd_bfd_lag_member_link_local_address_modify,
+				.destroy = bfdd_bfd_lag_member_link_local_address_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/peer-address",
+			.cbs = {
+				.modify = bfdd_bfd_lag_member_link_peer_address_modify,
+				.destroy = bfdd_bfd_lag_member_link_peer_address_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/detection-multiplier",
+			.cbs = {
+				.modify = bfdd_bfd_lag_member_link_detection_multiplier_modify,
+				.destroy = bfdd_bfd_lag_member_link_detection_multiplier_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/desired-transmission-interval",
+			.cbs = {
+				.modify = bfdd_bfd_lag_member_link_desired_transmission_interval_modify,
+				.destroy = bfdd_bfd_lag_member_link_desired_transmission_interval_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/required-receive-interval",
+			.cbs = {
+				.modify = bfdd_bfd_lag_member_link_required_receive_interval_modify,
+				.destroy = bfdd_bfd_lag_member_link_required_receive_interval_destroy,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/stats/total-members",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_stats_total_members_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/stats/active-members",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_stats_active_members_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/stats/down-members",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_stats_down_members_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/link-up",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_link_up_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/bfd-up",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_bfd_up_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/protodown-set",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_protodown_set_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/local-discriminator",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_local_discriminator_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/local-state",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_local_state_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/remote-discriminator",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_remote_discriminator_get_elem,
+			}
+		},
+		{
+			.xpath = "/frr-bfdd:bfdd/bfd/lag/member-link/stats/remote-state",
+			.cbs = {
+				.get_elem = bfdd_bfd_lag_member_link_stats_remote_state_get_elem,
+			}
+		},
 		{
 			.xpath = NULL,
 		},

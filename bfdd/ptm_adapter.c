@@ -15,6 +15,7 @@
 #include "lib/bfd.h"
 
 #include "bfd.h"
+#include "bfd_lag.h"
 #include "bfd_trace.h"
 
 /*
@@ -901,6 +902,70 @@ void bfdd_zclient_stop(void)
 void bfdd_zclient_terminate(void)
 {
 	zclient_free(bfd_zclient);
+}
+
+/*
+ * Micro-BFD LAG member notification
+ *
+ * Sends protodown state change to zebra for LAG member interfaces.
+ * When BFD session goes down, protodown is set on the member interface.
+ * When BFD session comes up, protodown is cleared.
+ */
+int ptm_bfd_notify_lag_member(struct bfd_lag_member *member, bool bfd_up)
+{
+	struct stream *s;
+	const char *ifname;
+	const char *vrfname;
+
+	if (member == NULL)
+		return -1;
+
+	ifname = member->member_name;
+	vrfname = (member->lag && member->lag->vrfname[0])
+		    ? member->lag->vrfname : VRF_DEFAULT_NAME;
+
+	if (bfd_zclient == NULL || bfd_zclient->sock < 0) {
+		if (bglobal.debug_zebra)
+			zlog_debug("ptm-lag-notify: zclient not connected");
+		return -1;
+	}
+
+	if (bglobal.debug_zebra)
+		zlog_debug("ptm-lag-notify: %s member %s BFD %s -> protodown %s",
+			   member->lag ? member->lag->lag_name : "unknown",
+			   member->member_name, bfd_up ? "up" : "down",
+			   bfd_up ? "clear" : "set");
+
+	/*
+	 * Send ZEBRA_BFD_LAG_MEMBER_STATUS message to zebra.
+	 * Format:
+	 *   - Interface name (IFNAMSIZ bytes)
+	 *   - VRF name (VRF_NAMSIZ bytes)
+	 *   - BFD status (1 byte: 1 = up, 0 = down)
+	 */
+	s = bfd_zclient->obuf;
+	stream_reset(s);
+	zclient_create_header(s, ZEBRA_BFD_LAG_MEMBER_STATUS, VRF_DEFAULT);
+
+	/* Interface name */
+	stream_put(s, ifname, IFNAMSIZ);
+
+	/* VRF name */
+	stream_put(s, vrfname, VRF_NAMSIZ);
+
+	/* BFD status */
+	stream_putc(s, bfd_up ? 1 : 0);
+
+	/* Update message length */
+	stream_putw_at(s, 0, stream_get_endp(s));
+
+	if (zclient_send_message(bfd_zclient) == ZCLIENT_SEND_FAILURE) {
+		zlog_warn("ptm-lag-notify: failed to send status for %s",
+			  member->member_name);
+		return -1;
+	}
+
+	return 0;
 }
 
 

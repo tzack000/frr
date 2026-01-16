@@ -1294,6 +1294,305 @@ void bfd_cli_peer_profile_show(struct vty *vty, const struct lyd_node *dnode,
 	vty_out(vty, "  profile %s\n", yang_dnode_get_string(dnode, NULL));
 }
 
+/*
+ * Micro-BFD LAG CLI Commands (RFC 7130)
+ */
+#include "bfd_lag.h"
+
+#define LAG_STR "Configure Micro-BFD over LAG (RFC 7130)\n"
+#define LAG_NAME_STR "LAG interface name\n"
+#define MEMBER_STR "Configure member link\n"
+#define MEMBER_NAME_STR "Member interface name\n"
+
+DEFPY_NOSH(bfd_lag_enter, bfd_lag_enter_cmd,
+	   "lag LAGNAME$lagname [vrf NAME$vrfname]",
+	   LAG_STR
+	   LAG_NAME_STR
+	   VRF_STR
+	   VRF_NAME_STR)
+{
+	struct bfd_lag *lag;
+
+	lag = bfd_lag_get(lagname, vrfname);
+	if (lag == NULL) {
+		vty_out(vty, "%% Failed to create LAG %s\n", lagname);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	VTY_PUSH_CONTEXT(BFD_LAG_NODE, lag);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_no_lag, bfd_no_lag_cmd,
+      "no lag LAGNAME$lagname [vrf NAME$vrfname]",
+      NO_STR
+      LAG_STR
+      LAG_NAME_STR
+      VRF_STR
+      VRF_NAME_STR)
+{
+	struct bfd_lag *lag;
+
+	lag = bfd_lag_find(lagname, vrfname);
+	if (lag == NULL) {
+		vty_out(vty, "%% Cannot find LAG %s\n", lagname);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	bfd_lag_free(lag);
+	return CMD_SUCCESS;
+}
+
+DEFPY_NOSH(bfd_lag_member_enter, bfd_lag_member_enter_cmd,
+      "member-link IFNAME$ifname",
+      MEMBER_STR
+      MEMBER_NAME_STR)
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+	struct bfd_lag_member *member;
+
+	member = bfd_lag_member_get(lag, ifname);
+	if (member == NULL) {
+		vty_out(vty, "%% Failed to add member %s to LAG %s\n",
+			ifname, lag->lag_name);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	VTY_PUSH_CONTEXT_SUB(BFD_LAG_MEMBER_NODE, member);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_no_member, bfd_lag_no_member_cmd,
+      "no member-link IFNAME$ifname",
+      NO_STR
+      MEMBER_STR
+      MEMBER_NAME_STR)
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+	struct bfd_lag_member *member;
+
+	member = bfd_lag_member_find(lag, ifname);
+	if (member == NULL) {
+		vty_out(vty, "%% Cannot find member %s in LAG %s\n",
+			ifname, lag->lag_name);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	bfd_lag_member_free(member);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_mult, bfd_lag_mult_cmd,
+      "[no] detect-multiplier ![(2-255)$mult]",
+      NO_STR
+      "Configure detection multiplier\n"
+      "Multiplier value\n")
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+
+	if (no)
+		lag->detect_mult = BFD_DEFDETECTMULT;
+	else
+		lag->detect_mult = mult;
+
+	bfd_lag_update_timers(lag);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_tx, bfd_lag_tx_cmd,
+      "[no] transmit-interval ![(10-4294967)$interval]",
+      NO_STR
+      "Configure transmit interval\n"
+      "Interval in milliseconds\n")
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+
+	if (no)
+		lag->min_tx = BFD_DEFDESIREDMINTX;
+	else
+		lag->min_tx = interval * 1000;  /* Convert ms to us */
+
+	bfd_lag_update_timers(lag);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_rx, bfd_lag_rx_cmd,
+      "[no] receive-interval ![(10-4294967)$interval]",
+      NO_STR
+      "Configure receive interval\n"
+      "Interval in milliseconds\n")
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+
+	if (no)
+		lag->min_rx = BFD_DEFREQUIREDMINRX;
+	else
+		lag->min_rx = interval * 1000;  /* Convert ms to us */
+
+	bfd_lag_update_timers(lag);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_shutdown, bfd_lag_shutdown_cmd,
+      "[no] shutdown",
+      NO_STR
+      "Administratively disable LAG Micro-BFD\n")
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+
+	bfd_lag_set_shutdown(lag, no ? false : true);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_profile, bfd_lag_profile_cmd,
+      "[no] profile BFDPROF$pname",
+      NO_STR
+      "Use BFD profile settings\n"
+      BFD_PROFILE_NAME_STR)
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+
+	if (no)
+		bfd_lag_set_profile(lag, NULL);
+	else
+		bfd_lag_set_profile(lag, pname);
+
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_member_local_address, bfd_lag_member_local_address_cmd,
+      "local-address <A.B.C.D|X:X::X:X>$addr",
+      "Configure local address for this member\n"
+      "IPv4 local address\n"
+      "IPv6 local address\n")
+{
+	VTY_DECLVAR_CONTEXT_SUB(bfd_lag_member, member);
+	struct sockaddr_any sa;
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr->sa.sa_family == AF_INET) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr->sin.sin_addr;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr->sin6.sin6_addr;
+	}
+
+	bfd_lag_member_set_local_address(member, &sa);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_member_peer_address, bfd_lag_member_peer_address_cmd,
+      "peer-address <A.B.C.D|X:X::X:X>$addr",
+      "Configure peer address for this member\n"
+      "IPv4 peer address\n"
+      "IPv6 peer address\n")
+{
+	VTY_DECLVAR_CONTEXT_SUB(bfd_lag_member, member);
+	struct sockaddr_any sa;
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr->sa.sa_family == AF_INET) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr->sin.sin_addr;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr->sin6.sin6_addr;
+	}
+
+	bfd_lag_member_set_peer_address(member, &sa);
+	return CMD_SUCCESS;
+}
+
+/* Legacy LAG-level commands that reference member by name (kept for backwards compatibility) */
+DEFPY(bfd_lag_local_address, bfd_lag_local_address_cmd,
+      "local-address <A.B.C.D|X:X::X:X>$addr interface IFNAME$ifname",
+      "Configure local address for member\n"
+      "IPv4 local address\n"
+      "IPv6 local address\n"
+      "Member interface\n"
+      MEMBER_NAME_STR)
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+
+	member = bfd_lag_member_find(lag, ifname);
+	if (member == NULL) {
+		vty_out(vty, "%% Cannot find member %s in LAG %s\n",
+			ifname, lag->lag_name);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr->sa.sa_family == AF_INET) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr->sin.sin_addr;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr->sin6.sin6_addr;
+	}
+
+	bfd_lag_member_set_local_address(member, &sa);
+	return CMD_SUCCESS;
+}
+
+DEFPY(bfd_lag_peer_address, bfd_lag_peer_address_cmd,
+      "peer-address <A.B.C.D|X:X::X:X>$addr interface IFNAME$ifname",
+      "Configure peer address for member\n"
+      "IPv4 peer address\n"
+      "IPv6 peer address\n"
+      "Member interface\n"
+      MEMBER_NAME_STR)
+{
+	VTY_DECLVAR_CONTEXT(bfd_lag, lag);
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+
+	member = bfd_lag_member_find(lag, ifname);
+	if (member == NULL) {
+		vty_out(vty, "%% Cannot find member %s in LAG %s\n",
+			ifname, lag->lag_name);
+		return CMD_WARNING_CONFIG_FAILED;
+	}
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr->sa.sa_family == AF_INET) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr->sin.sin_addr;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr->sin6.sin6_addr;
+	}
+
+	bfd_lag_member_set_peer_address(member, &sa);
+	return CMD_SUCCESS;
+}
+
+/* Node definition for BFD LAG */
+static int bfd_lag_config_write_node(struct vty *vty);
+
+struct cmd_node bfd_lag_node = {
+	.name = "bfd lag",
+	.node = BFD_LAG_NODE,
+	.parent_node = BFD_NODE,
+	.prompt = "%s(config-bfd-lag)# ",
+	.config_write = bfd_lag_config_write_node,
+};
+
+/* Node definition for BFD LAG member */
+struct cmd_node bfd_lag_member_node = {
+	.name = "bfd lag member",
+	.node = BFD_LAG_MEMBER_NODE,
+	.parent_node = BFD_LAG_NODE,
+	.prompt = "%s(config-bfd-lag-member)# ",
+};
+
+static int bfd_lag_config_write_node(struct vty *vty)
+{
+	return bfd_lag_config_write(vty);
+}
+
 struct cmd_node bfd_profile_node = {
 	.name = "bfd profile",
 	.node = BFD_PROFILE_NODE,
@@ -1372,4 +1671,30 @@ bfdd_cli_init(void)
 	install_element(BFD_PROFILE_NODE, &bfd_profile_log_session_changes_cmd);
 	install_element(BFD_PROFILE_NODE, &bfd_profile_minimum_ttl_cmd);
 	install_element(BFD_PROFILE_NODE, &no_bfd_profile_minimum_ttl_cmd);
+
+	/* Micro-BFD LAG commands (RFC 7130). */
+	install_node(&bfd_lag_node);
+	install_default(BFD_LAG_NODE);
+
+	install_element(BFD_NODE, &bfd_lag_enter_cmd);
+	install_element(BFD_NODE, &bfd_no_lag_cmd);
+
+	install_element(BFD_LAG_NODE, &bfd_lag_member_enter_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_no_member_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_mult_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_tx_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_rx_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_shutdown_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_profile_cmd);
+	/* Legacy commands that reference member by interface name */
+	install_element(BFD_LAG_NODE, &bfd_lag_local_address_cmd);
+	install_element(BFD_LAG_NODE, &bfd_lag_peer_address_cmd);
+
+	/* BFD LAG member node (RFC 7130). */
+	install_node(&bfd_lag_member_node);
+	install_default(BFD_LAG_MEMBER_NODE);
+
+	/* Member-specific commands */
+	install_element(BFD_LAG_MEMBER_NODE, &bfd_lag_member_local_address_cmd);
+	install_element(BFD_LAG_MEMBER_NODE, &bfd_lag_member_peer_address_cmd);
 }

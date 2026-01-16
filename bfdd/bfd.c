@@ -19,6 +19,7 @@
 
 #include "bfd.h"
 #include "bfd_trace.h"
+#include "bfd_lag.h"
 
 DEFINE_MTYPE_STATIC(BFDD, BFDD_CONFIG, "long-lived configuration memory");
 DEFINE_MTYPE_STATIC(BFDD, BFDD_PROFILE, "long-lived profile memory");
@@ -390,6 +391,17 @@ int bfd_session_enable(struct bfd_session *bs)
 			zlog_err("bp_peer_srh_socketv6 error");
 			return 0;
 		}
+	} else if (CHECK_FLAG(bs->flags, BFD_SESS_FLAG_MICRO_BFD)) {
+		/* Micro-BFD uses port 6784 and binds to member interface */
+		if (CHECK_FLAG(bs->flags, BFD_SESS_FLAG_IPV6) == 0) {
+			psock = bp_peer_socket_micro_bfd(bs);
+			if (psock == -1)
+				return 0;
+		} else {
+			psock = bp_peer_socketv6_micro_bfd(bs);
+			if (psock == -1)
+				return 0;
+		}
 	} else if (CHECK_FLAG(bs->flags, BFD_SESS_FLAG_IPV6) == 0) {
 		psock = bp_peer_socket(bs);
 		if (psock == -1) {
@@ -606,6 +618,10 @@ void ptm_bfd_sess_up(struct bfd_session *bfd)
 	/* Start sending control packets with poll bit immediately. */
 	ptm_bfd_snd(bfd, 0);
 
+	/* Notify Micro-BFD LAG subsystem of state change */
+	if (bfd->lag_member)
+		bfd_lag_session_state_change(bfd->lag_member, PTM_BFD_UP);
+
 	ptm_bfd_notify(bfd, bfd->ses_state);
 
 	frrtrace(4, frr_bfd, state_change, bfd, old_state, bfd->ses_state, bfd->local_diag);
@@ -658,6 +674,10 @@ void ptm_bfd_sess_dn(struct bfd_session *bfd, uint8_t diag)
 		bfd_recvtimer_delete(bfd);
 		bfd_xmttimer_delete(bfd);
 	}
+
+	/* Notify Micro-BFD LAG subsystem of state change */
+	if (bfd->lag_member)
+		bfd_lag_session_state_change(bfd->lag_member, PTM_BFD_DOWN);
 
 	frrtrace(4, frr_bfd, state_change, bfd, old_state, bfd->ses_state, bfd->local_diag);
 

@@ -19,6 +19,7 @@
 
 #include "bfd.h"
 #include "bfd_trace.h"
+#include "bfd_lag.h"
 #include "bfdd_nb.h"
 #include "bfddp_packet.h"
 #include "lib/version.h"
@@ -369,6 +370,9 @@ int main(int argc, char *argv[])
 
 	/* Initialize BFD data structures. */
 	bfd_initialize();
+
+	/* Initialize BFD over LAG (Micro-BFD) subsystem. */
+	bfd_lag_init();
 
 	bfd_vrf_init(perm_vrfs);
 

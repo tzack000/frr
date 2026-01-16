@@ -1465,6 +1465,76 @@ void zebra_ptm_bfd_dst_replay(ZAPI_HANDLER_ARGS)
 }
 
 /*
+ * Handle ZEBRA_BFD_LAG_MEMBER_STATUS messages from bfdd.
+ * This is used for Micro-BFD (RFC 7130) to set/clear protodown
+ * on LAG member interfaces based on BFD session state.
+ *
+ * Message format:
+ *   - Interface name (string, IFNAMSIZ)
+ *   - VRF name (string, VRF_NAMSIZ)
+ *   - BFD status (1 byte: 1 = up, 0 = down)
+ */
+void zebra_ptm_bfd_lag_member_status(ZAPI_HANDLER_ARGS)
+{
+	struct interface *ifp;
+	char ifname[IFNAMSIZ];
+	char vrfname[VRF_NAMSIZ];
+	uint8_t bfd_up;
+	struct vrf *vrf;
+
+	if (IS_ZEBRA_DEBUG_EVENT)
+		zlog_debug("Received ZEBRA_BFD_LAG_MEMBER_STATUS from client %s",
+			   zebra_route_string(client->proto));
+
+	/* Read interface name */
+	STREAM_GET(ifname, msg, IFNAMSIZ);
+	ifname[IFNAMSIZ - 1] = '\0';
+
+	/* Read VRF name */
+	STREAM_GET(vrfname, msg, VRF_NAMSIZ);
+	vrfname[VRF_NAMSIZ - 1] = '\0';
+
+	/* Read BFD status */
+	STREAM_GETC(msg, bfd_up);
+
+	/* Look up VRF */
+	if (vrfname[0] != '\0')
+		vrf = vrf_lookup_by_name(vrfname);
+	else
+		vrf = vrf_lookup_by_id(VRF_DEFAULT);
+
+	if (vrf == NULL) {
+		zlog_warn("BFD LAG member status: cannot find VRF %s", vrfname);
+		return;
+	}
+
+	/* Look up interface */
+	ifp = if_lookup_by_name(ifname, vrf->vrf_id);
+	if (ifp == NULL) {
+		zlog_warn("BFD LAG member status: cannot find interface %s in VRF %s",
+			  ifname, vrfname);
+		return;
+	}
+
+	if (IS_ZEBRA_DEBUG_EVENT)
+		zlog_debug("BFD LAG member %s in VRF %s: BFD %s -> protodown %s",
+			   ifname, vrfname,
+			   bfd_up ? "up" : "down",
+			   bfd_up ? "clear" : "set");
+
+	/* Set or clear protodown based on BFD status */
+	if (bfd_up)
+		zebra_if_set_protodown(ifp, false, ZEBRA_PROTODOWN_MICRO_BFD);
+	else
+		zebra_if_set_protodown(ifp, true, ZEBRA_PROTODOWN_MICRO_BFD);
+
+	return;
+
+stream_failure:
+	zlog_warn("BFD LAG member status: failed to parse message");
+}
+
+/*
  * Unused functions.
  */
 void zebra_ptm_if_init(struct zebra_if *zifp __attribute__((__unused__)))

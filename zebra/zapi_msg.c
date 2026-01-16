@@ -4173,6 +4173,7 @@ void (*const zserv_handlers[])(ZAPI_HANDLER_ARGS) = {
 	[ZEBRA_BFD_DEST_DEREGISTER] = zebra_ptm_bfd_dst_deregister,
 #if HAVE_BFDD > 0
 	[ZEBRA_BFD_DEST_REPLAY] = zebra_ptm_bfd_dst_replay,
+	[ZEBRA_BFD_LAG_MEMBER_STATUS] = zebra_ptm_bfd_lag_member_status,
 #endif /* HAVE_BFDD */
 	[ZEBRA_VRF_LABEL] = zread_vrf_label,
 	[ZEBRA_BFD_CLIENT_REGISTER] = zebra_ptm_bfd_client_register,

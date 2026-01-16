@@ -242,4 +242,59 @@ int bfdd_bfd_sessions_bfd_mode_destroy(struct nb_cb_destroy_args *args);
 int bfdd_bfd_sessions_segment_list_create(struct nb_cb_create_args *args);
 int bfdd_bfd_sessions_segment_list_destroy(struct nb_cb_destroy_args *args);
 
+/*
+ * Micro-BFD LAG Northbound callbacks (RFC 7130)
+ */
+
+/* LAG list callbacks */
+int bfdd_bfd_lag_create(struct nb_cb_create_args *args);
+int bfdd_bfd_lag_destroy(struct nb_cb_destroy_args *args);
+const void *bfdd_bfd_lag_get_next(struct nb_cb_get_next_args *args);
+int bfdd_bfd_lag_get_keys(struct nb_cb_get_keys_args *args);
+const void *bfdd_bfd_lag_lookup_entry(struct nb_cb_lookup_entry_args *args);
+
+/* LAG configuration callbacks */
+int bfdd_bfd_lag_profile_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_profile_destroy(struct nb_cb_destroy_args *args);
+int bfdd_bfd_lag_detection_multiplier_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_desired_transmission_interval_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_required_receive_interval_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_administrative_down_modify(struct nb_cb_modify_args *args);
+
+/* LAG member-link callbacks */
+int bfdd_bfd_lag_member_link_create(struct nb_cb_create_args *args);
+int bfdd_bfd_lag_member_link_destroy(struct nb_cb_destroy_args *args);
+const void *bfdd_bfd_lag_member_link_get_next(struct nb_cb_get_next_args *args);
+int bfdd_bfd_lag_member_link_get_keys(struct nb_cb_get_keys_args *args);
+const void *bfdd_bfd_lag_member_link_lookup_entry(struct nb_cb_lookup_entry_args *args);
+int bfdd_bfd_lag_member_link_local_address_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_member_link_local_address_destroy(struct nb_cb_destroy_args *args);
+int bfdd_bfd_lag_member_link_peer_address_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_member_link_peer_address_destroy(struct nb_cb_destroy_args *args);
+int bfdd_bfd_lag_member_link_detection_multiplier_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_member_link_detection_multiplier_destroy(struct nb_cb_destroy_args *args);
+int bfdd_bfd_lag_member_link_desired_transmission_interval_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_member_link_desired_transmission_interval_destroy(struct nb_cb_destroy_args *args);
+int bfdd_bfd_lag_member_link_required_receive_interval_modify(struct nb_cb_modify_args *args);
+int bfdd_bfd_lag_member_link_required_receive_interval_destroy(struct nb_cb_destroy_args *args);
+
+/* LAG stats callbacks */
+struct yang_data *bfdd_bfd_lag_stats_total_members_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_stats_active_members_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_stats_down_members_get_elem(struct nb_cb_get_elem_args *args);
+
+/* LAG member-link stats callbacks */
+struct yang_data *bfdd_bfd_lag_member_link_stats_link_up_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_bfd_up_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_protodown_set_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_local_discriminator_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_local_state_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_remote_discriminator_get_elem(struct nb_cb_get_elem_args *args);
+struct yang_data *bfdd_bfd_lag_member_link_stats_remote_state_get_elem(struct nb_cb_get_elem_args *args);
+
+/* LAG CLI show callbacks */
+void bfd_cli_show_lag(struct vty *vty, const struct lyd_node *dnode, bool show_defaults);
+void bfd_cli_show_lag_end(struct vty *vty, const struct lyd_node *dnode);
+void bfd_cli_show_lag_member_link(struct vty *vty, const struct lyd_node *dnode, bool show_defaults);
+
 #endif /* _FRR_BFDD_NB_H_ */

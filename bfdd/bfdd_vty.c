@@ -1384,6 +1384,63 @@ static int bfdd_write_config(struct vty *vty)
 	return written;
 }
 
+/*
+ * Micro-BFD LAG show commands (RFC 7130)
+ */
+#include "bfd_lag.h"
+
+DEFPY(show_bfd_lag, show_bfd_lag_cmd,
+      "show bfd lag [LAGNAME$lagname] [json]",
+      SHOW_STR
+      "Bidirection Forwarding Detection\n"
+      "Show Micro-BFD LAG sessions\n"
+      "Specific LAG name\n"
+      JSON_STR)
+{
+	struct json_object *json_out = NULL;
+
+	if (use_json(argc, argv))
+		json_out = json_object_new_object();
+
+	bfd_lag_show(vty, lagname, json_out);
+
+	if (json_out) {
+		vty_json(vty, json_out);
+	}
+
+	return CMD_SUCCESS;
+}
+
+DEFPY(show_bfd_lag_members, show_bfd_lag_members_cmd,
+      "show bfd lag LAGNAME$lagname members [json]",
+      SHOW_STR
+      "Bidirection Forwarding Detection\n"
+      "Show Micro-BFD LAG sessions\n"
+      "LAG name\n"
+      "Show member links status\n"
+      JSON_STR)
+{
+	struct bfd_lag *lag;
+	struct json_object *json_out = NULL;
+
+	lag = bfd_lag_find(lagname, NULL);
+	if (lag == NULL) {
+		vty_out(vty, "%% Cannot find LAG %s\n", lagname);
+		return CMD_WARNING;
+	}
+
+	if (use_json(argc, argv))
+		json_out = json_object_new_object();
+
+	bfd_lag_show_members(vty, lag, json_out);
+
+	if (json_out) {
+		vty_json(vty, json_out);
+	}
+
+	return CMD_SUCCESS;
+}
+
 void bfdd_vty_init(void)
 {
 	install_element(ENABLE_NODE, &bfd_show_peers_counters_cmd);
@@ -1397,6 +1454,12 @@ void bfdd_vty_init(void)
 	install_element(ENABLE_NODE, &bfd_show_peers_brief_cmd);
 	install_element(ENABLE_NODE, &show_bfd_distributed_cmd);
 	install_element(ENABLE_NODE, &show_debugging_bfd_cmd);
+
+	/* Micro-BFD LAG show commands (RFC 7130) */
+	install_element(ENABLE_NODE, &show_bfd_lag_cmd);
+	install_element(ENABLE_NODE, &show_bfd_lag_members_cmd);
+	install_element(VIEW_NODE, &show_bfd_lag_cmd);
+	install_element(VIEW_NODE, &show_bfd_lag_members_cmd);
 
 	install_element(ENABLE_NODE, &bfd_debug_distributed_cmd);
 	install_element(ENABLE_NODE, &bfd_debug_peer_cmd);

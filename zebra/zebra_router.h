@@ -61,9 +61,11 @@ enum protodown_reasons {
 	ZEBRA_PROTODOWN_VRRP = (1 << 3),
 	/* This reason used exclusively for testing */
 	ZEBRA_PROTODOWN_SHARP = (1 << 4),
+	/* Micro-BFD (RFC 7130) session down on LAG member */
+	ZEBRA_PROTODOWN_MICRO_BFD = (1 << 5),
 	/* Just used to clear our fields on shutdown, externel not included */
 	ZEBRA_PROTODOWN_ALL = (ZEBRA_PROTODOWN_EVPN_ALL | ZEBRA_PROTODOWN_VRRP |
-			       ZEBRA_PROTODOWN_SHARP)
+			       ZEBRA_PROTODOWN_SHARP | ZEBRA_PROTODOWN_MICRO_BFD)
 };
 #define ZEBRA_PROTODOWN_RC_STR_LEN 80
 

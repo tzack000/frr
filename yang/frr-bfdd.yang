@@ -58,6 +58,13 @@ module frr-bfdd {
        RFC 5883: Bidirectional Forwarding Detection (BFD) for Multihop Paths.";
   }
 
+  revision 2025-01-16 {
+    description "Add Micro-BFD over LAG support (RFC 7130)";
+    reference
+      "RFC 7130: Bidirectional Forwarding Detection (BFD) on
+                 Link Aggregation Group (LAG) Interfaces.";
+  }
+
   revision 2019-05-09 {
     description "Initial revision.";
     reference
@@ -430,6 +437,83 @@ module frr-bfdd {
   }
 
   /*
+   * Micro-BFD LAG groupings (RFC 7130)
+   */
+  grouping lag-common {
+    description "Common Micro-BFD LAG settings";
+
+    leaf detection-multiplier {
+      type multiplier;
+      default 3;
+      description "Detection multiplier for all member sessions";
+    }
+
+    leaf desired-transmission-interval {
+      type uint32 {
+        range "10000..max";
+      }
+      units microseconds;
+      default 300000;
+      description "Minimum desired control packet transmission interval";
+    }
+
+    leaf required-receive-interval {
+      type uint32 {
+        range "10000..max";
+      }
+      units microseconds;
+      default 300000;
+      description "Minimum required control packet receive interval";
+    }
+
+    leaf administrative-down {
+      type boolean;
+      default false;
+      description "Administratively disable all member sessions";
+    }
+  }
+
+  grouping lag-member-states {
+    description "Operational state for a LAG member BFD session";
+
+    leaf link-up {
+      type boolean;
+      description "Physical link status of the member interface";
+    }
+
+    leaf bfd-up {
+      type boolean;
+      description "BFD session status on the member interface";
+    }
+
+    leaf protodown-set {
+      type boolean;
+      description "Whether protodown has been set on the interface";
+    }
+
+    uses session-states;
+  }
+
+  grouping lag-stats {
+    description "Aggregate statistics for a LAG";
+
+    leaf total-members {
+      type uint8;
+      description "Total number of configured member links";
+    }
+
+    leaf active-members {
+      type uint8;
+      description "Number of member links with BFD session Up";
+    }
+
+    leaf down-members {
+      type uint8;
+      description "Number of member links with BFD session Down";
+    }
+  }
+
+  /*
    * BFD operational.
    */
   container bfdd {
@@ -662,6 +746,99 @@ module frr-bfdd {
             description
               "This container provides statistics for sessions.";
           }
+        }
+      }
+
+      /*
+       * Micro-BFD over LAG (RFC 7130)
+       */
+      list lag {
+        key "lag-name vrf";
+        description
+          "List of Micro-BFD LAG session groups.
+           Each LAG can have multiple member links running independent
+           BFD sessions per RFC 7130.";
+
+        leaf lag-name {
+          type string {
+            length "1..15";
+          }
+          description "LAG interface name (e.g., bond0, PortChannel001)";
+        }
+
+        leaf vrf {
+          type frr-vrf:vrf-ref;
+          description "Virtual Routing Domain name";
+        }
+
+        leaf profile {
+          type profile-ref;
+          description "Apply BFD profile settings to all member sessions";
+        }
+
+        uses lag-common;
+
+        list member-link {
+          key "name";
+          description
+            "List of member links in this LAG.
+             Each member link runs an independent Micro-BFD session.";
+
+          leaf name {
+            type frr-interface:interface-ref;
+            description "Member interface name (e.g., eth0, Ethernet0)";
+          }
+
+          leaf local-address {
+            type inet:ip-address;
+            description "Local IP address for BFD session on this member";
+          }
+
+          leaf peer-address {
+            type inet:ip-address;
+            description "Peer IP address for BFD session on this member";
+          }
+
+          leaf detection-multiplier {
+            type multiplier;
+            description
+              "Member-specific detection multiplier override.
+               If not set, inherits from LAG-level configuration.";
+          }
+
+          leaf desired-transmission-interval {
+            type uint32 {
+              range "10000..max";
+            }
+            units microseconds;
+            description
+              "Member-specific transmit interval override.
+               If not set, inherits from LAG-level configuration.";
+          }
+
+          leaf required-receive-interval {
+            type uint32 {
+              range "10000..max";
+            }
+            units microseconds;
+            description
+              "Member-specific receive interval override.
+               If not set, inherits from LAG-level configuration.";
+          }
+
+          container stats {
+            config false;
+            description "Operational state and statistics for this member";
+
+            uses lag-member-states;
+          }
+        }
+
+        container stats {
+          config false;
+          description "Aggregate statistics for this LAG";
+
+          uses lag-stats;
         }
       }
       description

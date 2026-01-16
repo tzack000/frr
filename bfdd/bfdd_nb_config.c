@@ -1225,3 +1225,422 @@ int bfdd_bfd_sessions_sbfd_multi_hop_destroy(struct nb_cb_destroy_args *args)
 {
 	return NB_OK;
 }
+
+/*
+ * Micro-BFD LAG Northbound callbacks (RFC 7130)
+ */
+#include "bfd_lag.h"
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag
+ */
+int bfdd_bfd_lag_create(struct nb_cb_create_args *args)
+{
+	struct bfd_lag *lag;
+	const char *lag_name;
+	const char *vrfname;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag_name = yang_dnode_get_string(args->dnode, "lag-name");
+	vrfname = yang_dnode_get_string(args->dnode, "vrf");
+
+	lag = bfd_lag_get(lag_name, vrfname);
+	if (lag == NULL)
+		return NB_ERR_RESOURCE;
+
+	nb_running_set_entry(args->dnode, lag);
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_unset_entry(args->dnode);
+	bfd_lag_free(lag);
+
+	return NB_OK;
+}
+
+const void *bfdd_bfd_lag_get_next(struct nb_cb_get_next_args *args)
+{
+	struct bfd_lag *lag = (struct bfd_lag *)args->list_entry;
+
+	if (lag == NULL)
+		return TAILQ_FIRST(&bfd_lag_list);
+
+	return TAILQ_NEXT(lag, entry);
+}
+
+int bfdd_bfd_lag_get_keys(struct nb_cb_get_keys_args *args)
+{
+	const struct bfd_lag *lag = args->list_entry;
+
+	args->keys->num = 2;
+	strlcpy(args->keys->key[0], lag->lag_name, sizeof(args->keys->key[0]));
+	strlcpy(args->keys->key[1], lag->vrfname[0] ? lag->vrfname : VRF_DEFAULT_NAME,
+		sizeof(args->keys->key[1]));
+
+	return NB_OK;
+}
+
+const void *bfdd_bfd_lag_lookup_entry(struct nb_cb_lookup_entry_args *args)
+{
+	const char *lag_name = args->keys->key[0];
+	const char *vrfname = args->keys->key[1];
+
+	return bfd_lag_find(lag_name, vrfname);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/profile
+ */
+int bfdd_bfd_lag_profile_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag *lag;
+	const char *profile_name;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	profile_name = yang_dnode_get_string(args->dnode, NULL);
+	bfd_lag_set_profile(lag, profile_name);
+
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_profile_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	bfd_lag_set_profile(lag, NULL);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/detection-multiplier
+ */
+int bfdd_bfd_lag_detection_multiplier_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	lag->detect_mult = yang_dnode_get_uint8(args->dnode, NULL);
+	bfd_lag_update_timers(lag);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/desired-transmission-interval
+ */
+int bfdd_bfd_lag_desired_transmission_interval_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	lag->min_tx = yang_dnode_get_uint32(args->dnode, NULL);
+	bfd_lag_update_timers(lag);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/required-receive-interval
+ */
+int bfdd_bfd_lag_required_receive_interval_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	lag->min_rx = yang_dnode_get_uint32(args->dnode, NULL);
+	bfd_lag_update_timers(lag);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/administrative-down
+ */
+int bfdd_bfd_lag_administrative_down_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag *lag;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	bfd_lag_set_shutdown(lag, yang_dnode_get_bool(args->dnode, NULL));
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link
+ */
+int bfdd_bfd_lag_member_link_create(struct nb_cb_create_args *args)
+{
+	struct bfd_lag *lag;
+	struct bfd_lag_member *member;
+	const char *member_name;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	lag = nb_running_get_entry(args->dnode, NULL, true);
+	member_name = yang_dnode_get_string(args->dnode, "name");
+
+	member = bfd_lag_member_get(lag, member_name);
+	if (member == NULL)
+		return NB_ERR_RESOURCE;
+
+	nb_running_set_entry(args->dnode, member);
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_unset_entry(args->dnode);
+	bfd_lag_member_free(member);
+
+	return NB_OK;
+}
+
+const void *bfdd_bfd_lag_member_link_get_next(struct nb_cb_get_next_args *args)
+{
+	struct bfd_lag *lag = (struct bfd_lag *)args->parent_list_entry;
+	struct bfd_lag_member *member = (struct bfd_lag_member *)args->list_entry;
+	struct listnode *node;
+
+	if (lag == NULL || lag->member_sessions == NULL)
+		return NULL;
+
+	if (member == NULL) {
+		node = listhead(lag->member_sessions);
+	} else {
+		node = listnode_lookup(lag->member_sessions, member);
+		if (node)
+			node = listnextnode(node);
+	}
+
+	return node ? listgetdata(node) : NULL;
+}
+
+int bfdd_bfd_lag_member_link_get_keys(struct nb_cb_get_keys_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	args->keys->num = 1;
+	strlcpy(args->keys->key[0], member->member_name, sizeof(args->keys->key[0]));
+
+	return NB_OK;
+}
+
+const void *bfdd_bfd_lag_member_link_lookup_entry(struct nb_cb_lookup_entry_args *args)
+{
+	struct bfd_lag *lag = (struct bfd_lag *)args->parent_list_entry;
+	const char *member_name = args->keys->key[0];
+
+	if (lag == NULL)
+		return NULL;
+
+	return bfd_lag_member_find(lag, member_name);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/local-address
+ */
+int bfdd_bfd_lag_member_link_local_address_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+	struct ipaddr addr;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	yang_dnode_get_ip(&addr, args->dnode, NULL);
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr.ipa_type == IPADDR_V4) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr.ipaddr_v4;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr.ipaddr_v6;
+	}
+
+	bfd_lag_member_set_local_address(member, &sa);
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_local_address_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	memset(&sa, 0, sizeof(sa));
+	bfd_lag_member_set_local_address(member, &sa);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/peer-address
+ */
+int bfdd_bfd_lag_member_link_peer_address_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+	struct ipaddr addr;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	yang_dnode_get_ip(&addr, args->dnode, NULL);
+
+	memset(&sa, 0, sizeof(sa));
+	if (addr.ipa_type == IPADDR_V4) {
+		sa.sa_sin.sin_family = AF_INET;
+		sa.sa_sin.sin_addr = addr.ipaddr_v4;
+	} else {
+		sa.sa_sin6.sin6_family = AF_INET6;
+		sa.sa_sin6.sin6_addr = addr.ipaddr_v6;
+	}
+
+	bfd_lag_member_set_peer_address(member, &sa);
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_peer_address_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+	struct sockaddr_any sa;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	memset(&sa, 0, sizeof(sa));
+	bfd_lag_member_set_peer_address(member, &sa);
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/detection-multiplier
+ */
+int bfdd_bfd_lag_member_link_detection_multiplier_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->detect_mult = yang_dnode_get_uint8(args->dnode, NULL);
+
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_detection_multiplier_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->detect_mult = 0;  /* Use LAG default */
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/desired-transmission-interval
+ */
+int bfdd_bfd_lag_member_link_desired_transmission_interval_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->min_tx = yang_dnode_get_uint32(args->dnode, NULL);
+
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_desired_transmission_interval_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->min_tx = 0;  /* Use LAG default */
+
+	return NB_OK;
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/required-receive-interval
+ */
+int bfdd_bfd_lag_member_link_required_receive_interval_modify(struct nb_cb_modify_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->min_rx = yang_dnode_get_uint32(args->dnode, NULL);
+
+	return NB_OK;
+}
+
+int bfdd_bfd_lag_member_link_required_receive_interval_destroy(struct nb_cb_destroy_args *args)
+{
+	struct bfd_lag_member *member;
+
+	if (args->event != NB_EV_APPLY)
+		return NB_OK;
+
+	member = nb_running_get_entry(args->dnode, NULL, true);
+	member->min_rx = 0;  /* Use LAG default */
+
+	return NB_OK;
+}

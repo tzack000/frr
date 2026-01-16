@@ -1768,6 +1768,156 @@ int bp_udp6_mhop(const struct vrf *vrf)
 	return sd;
 }
 
+/*
+ * Micro-BFD (RFC 7130) socket functions.
+ *
+ * Micro-BFD uses UDP port 6784 and runs on individual LAG member links.
+ */
+
+/*
+ * Bind socket to specific device (for Micro-BFD).
+ *
+ * Returns 0 on success, -1 on failure.
+ */
+int bp_bind_dev(int sd, const char *dev)
+{
+#ifdef SO_BINDTODEVICE
+	int ret;
+
+	ret = setsockopt(sd, SOL_SOCKET, SO_BINDTODEVICE, dev, strlen(dev) + 1);
+	if (ret < 0) {
+		zlog_warn("bp_bind_dev: setsockopt(SO_BINDTODEVICE, %s) failed: %s",
+			  dev, strerror(errno));
+		return -1;
+	}
+
+	if (bglobal.debug_network)
+		zlog_debug("bp_bind_dev: bound socket %d to device %s", sd, dev);
+
+	return 0;
+#else
+	zlog_warn("bp_bind_dev: SO_BINDTODEVICE not available on this platform");
+	return -1;
+#endif
+}
+
+int bp_udp_micro_bfd(const struct vrf *vrf)
+{
+	int sd;
+
+	frr_with_privs(&bglobal.bfdd_privs) {
+		sd = vrf_socket(AF_INET, SOCK_DGRAM, PF_UNSPEC, vrf->vrf_id,
+				vrf->name);
+	}
+	if (sd == -1) {
+		zlog_err("micro-bfd: socket: %s", strerror(errno));
+		return -1;
+	}
+
+	bp_set_ipopts(sd);
+	bp_bind_ip(sd, BFD_DEF_MICRO_BFD_PORT);
+
+	return sd;
+}
+
+int bp_udp6_micro_bfd(const struct vrf *vrf)
+{
+	int sd;
+
+	frr_with_privs(&bglobal.bfdd_privs) {
+		sd = vrf_socket(AF_INET6, SOCK_DGRAM, PF_UNSPEC, vrf->vrf_id,
+				vrf->name);
+	}
+	if (sd == -1) {
+		if (errno != EAFNOSUPPORT)
+			zlog_err("micro-bfd6: socket: %s", strerror(errno));
+		else
+			zlog_warn("micro-bfd6: V6 is not supported, continuing");
+		return -1;
+	}
+
+	bp_set_ipv6opts(sd);
+	bp_bind_ipv6(sd, BFD_DEF_MICRO_BFD_PORT);
+
+	return sd;
+}
+
+int bp_peer_socket_micro_bfd(const struct bfd_session *bs)
+{
+	int sd;
+	struct sockaddr_in sin;
+
+	sd = socket(AF_INET, SOCK_DGRAM, PF_UNSPEC);
+	if (sd == -1) {
+		zlog_err("micro-bfd-peer: failed to create socket: %s",
+			 strerror(errno));
+		return -1;
+	}
+
+	/* Set TTL to 255 for single-hop BFD */
+	bp_set_ipopts(sd);
+
+	/* Bind to member interface */
+	if (bs->ifp && bp_bind_dev(sd, bs->ifp->name) != 0) {
+		close(sd);
+		return -1;
+	}
+
+	/* Bind to local address */
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	memcpy(&sin.sin_addr, &bs->key.local, sizeof(sin.sin_addr));
+	sin.sin_port = htons(BFD_DEF_MICRO_BFD_PORT);
+
+	if (bind(sd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
+		zlog_err("micro-bfd-peer: bind(%pI4) failed: %s",
+			 &bs->key.local, strerror(errno));
+		close(sd);
+		return -1;
+	}
+
+	return sd;
+}
+
+int bp_peer_socketv6_micro_bfd(const struct bfd_session *bs)
+{
+	int sd;
+	struct sockaddr_in6 sin6;
+
+	sd = socket(AF_INET6, SOCK_DGRAM, PF_UNSPEC);
+	if (sd == -1) {
+		zlog_err("micro-bfd-peer6: failed to create socket: %s",
+			 strerror(errno));
+		return -1;
+	}
+
+	/* Set hop limit to 255 for single-hop BFD */
+	bp_set_ipv6opts(sd);
+
+	/* Bind to member interface */
+	if (bs->ifp && bp_bind_dev(sd, bs->ifp->name) != 0) {
+		close(sd);
+		return -1;
+	}
+
+	/* Bind to local address */
+	memset(&sin6, 0, sizeof(sin6));
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_addr = bs->key.local;
+	sin6.sin6_port = htons(BFD_DEF_MICRO_BFD_PORT);
+	if (IN6_IS_ADDR_LINKLOCAL(&sin6.sin6_addr) && bs->ifp)
+		sin6.sin6_scope_id = bs->ifp->ifindex;
+
+	if (bind(sd, (struct sockaddr *)&sin6, sizeof(sin6)) == -1) {
+		zlog_err("micro-bfd-peer6: bind(%pI6) failed: %s",
+			 &bs->key.local, strerror(errno));
+		close(sd);
+		return -1;
+	}
+
+	return sd;
+}
+
 #ifdef BFD_LINUX
 /* tcpdump -dd udp dst port 3785 */
 struct sock_filter my_filterudp[] = {

@@ -436,3 +436,173 @@ const void *bfdd_bfd_sessions_sbfd_init_lookup_entry(struct nb_cb_lookup_entry_a
 
 	return bfd_key_lookup(&bk);
 }
+
+/*
+ * Micro-BFD LAG State callbacks (RFC 7130)
+ */
+#include "bfd_lag.h"
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/stats/total-members
+ */
+struct yang_data *bfdd_bfd_lag_stats_total_members_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag *lag = args->list_entry;
+
+	return yang_data_new_uint8(args->xpath, lag->total_members);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/stats/active-members
+ */
+struct yang_data *bfdd_bfd_lag_stats_active_members_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag *lag = args->list_entry;
+
+	return yang_data_new_uint8(args->xpath, lag->active_members);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/stats/down-members
+ */
+struct yang_data *bfdd_bfd_lag_stats_down_members_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag *lag = args->list_entry;
+	uint8_t down_members = lag->total_members - lag->active_members;
+
+	return yang_data_new_uint8(args->xpath, down_members);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/link-up
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_link_up_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	return yang_data_new_bool(args->xpath, member->link_up);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/bfd-up
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_bfd_up_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	return yang_data_new_bool(args->xpath, member->bfd_up);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/protodown-set
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_protodown_set_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	return yang_data_new_bool(args->xpath, member->protodown_set);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/local-discriminator
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_local_discriminator_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	if (member->bs == NULL)
+		return NULL;
+
+	return yang_data_new_uint32(args->xpath, member->bs->discrs.my_discr);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/local-state
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_local_state_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+	const char *state_str;
+
+	if (member->bs == NULL)
+		return NULL;
+
+	switch (member->bs->ses_state) {
+	case PTM_BFD_ADM_DOWN:
+		state_str = "admin-down";
+		break;
+	case PTM_BFD_DOWN:
+		state_str = "down";
+		break;
+	case PTM_BFD_INIT:
+		state_str = "init";
+		break;
+	case PTM_BFD_UP:
+		state_str = "up";
+		break;
+	default:
+		state_str = "down";
+		break;
+	}
+
+	return yang_data_new_string(args->xpath, state_str);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/remote-discriminator
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_remote_discriminator_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	if (member->bs == NULL || member->bs->discrs.remote_discr == 0)
+		return NULL;
+
+	return yang_data_new_uint32(args->xpath, member->bs->discrs.remote_discr);
+}
+
+/*
+ * XPath: /frr-bfdd:bfdd/bfd/lag/member-link/stats/remote-state
+ */
+struct yang_data *bfdd_bfd_lag_member_link_stats_remote_state_get_elem(struct nb_cb_get_elem_args *args)
+{
+	const struct bfd_lag_member *member = args->list_entry;
+
+	if (member->bs == NULL)
+		return NULL;
+
+	/* Return state based on session state - BFD is bidirectional
+	 * so if our session is up, we know the peer is up too.
+	 */
+	if (member->bs->ses_state == PTM_BFD_UP)
+		return yang_data_new_string(args->xpath, "up");
+
+	return yang_data_new_string(args->xpath, "down");
+}
+
+/*
+ * CLI show callbacks for LAG
+ */
+void bfd_cli_show_lag(struct vty *vty, const struct lyd_node *dnode, bool show_defaults)
+{
+	const char *lag_name = yang_dnode_get_string(dnode, "lag-name");
+	const char *vrf = yang_dnode_get_string(dnode, "vrf");
+
+	vty_out(vty, " lag %s", lag_name);
+	if (strcmp(vrf, VRF_DEFAULT_NAME) != 0)
+		vty_out(vty, " vrf %s", vrf);
+	vty_out(vty, "\n");
+}
+
+void bfd_cli_show_lag_end(struct vty *vty, const struct lyd_node *dnode)
+{
+	vty_out(vty, " exit\n");
+	vty_out(vty, " !\n");
+}
+
+void bfd_cli_show_lag_member_link(struct vty *vty, const struct lyd_node *dnode, bool show_defaults)
+{
+	const char *member_name = yang_dnode_get_string(dnode, "name");
+
+	vty_out(vty, "  member-link %s\n", member_name);
+}

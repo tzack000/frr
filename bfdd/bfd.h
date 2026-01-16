@@ -42,6 +42,9 @@ DECLARE_MGROUP(BFDD);
 DECLARE_MTYPE(BFDD_CLIENT);
 DECLARE_MTYPE(BFDD_CLIENT_NOTIFICATION);
 
+/* Forward declaration for Micro-BFD */
+struct bfd_lag_member;
+
 struct sockaddr_any {
 	union {
 		struct sockaddr_in sa_sin;
@@ -243,6 +246,7 @@ enum bfd_session_flags {
 	BFD_SESS_FLAG_PASSIVE = 1 << 10,	     /* Passive mode */
 	BFD_SESS_FLAG_MAC_SET = 1 << 11,	     /* MAC of peer known */
 	BFD_SESS_FLAG_LOG_SESSION_CHANGES = 1 << 12, /* Log session changes */
+	BFD_SESS_FLAG_MICRO_BFD = 1 << 13,	     /* Micro-BFD session (RFC 7130) */
 };
 
 enum bfd_mode_type {
@@ -399,6 +403,9 @@ struct bfd_session {
 	uint64_t rtt[BFD_RTT_SAMPLE]; /* RRT in usec for echo to be looped */
 	char bfd_name[BFD_NAME_SIZE + 1];
 
+	/** Micro-BFD LAG member back-reference (NULL for non-Micro-BFD sessions) */
+	struct bfd_lag_member *lag_member;
+
 	uint32_t bfd_mode;
 	uint8_t segnum;
 	struct in6_addr out_sip6;
@@ -462,6 +469,7 @@ struct sbfd_reflector {
 #define BFD_DEF_ECHO_PORT 3785
 #define BFD_DEF_MHOP_DEST_PORT 4784
 #define BFD_DEF_SBFD_DEST_PORT 7784
+#define BFD_DEF_MICRO_BFD_PORT 6784  /* RFC 7130 Micro-BFD port */
 
 #define BFD_SBFD_INITIATOR_DEMAND 1
 
@@ -551,8 +559,12 @@ int bp_udp_shop(const struct vrf *vrf);
 int bp_udp_mhop(const struct vrf *vrf);
 int bp_udp6_shop(const struct vrf *vrf);
 int bp_udp6_mhop(const struct vrf *vrf);
+int bp_udp_micro_bfd(const struct vrf *vrf);
+int bp_udp6_micro_bfd(const struct vrf *vrf);
 int bp_peer_socket(const struct bfd_session *bs);
 int bp_peer_socketv6(const struct bfd_session *bs);
+int bp_peer_socket_micro_bfd(const struct bfd_session *bs);
+int bp_peer_socketv6_micro_bfd(const struct bfd_session *bs);
 int bp_echo_socket(const struct vrf *vrf);
 int bp_echov6_socket(const struct vrf *vrf);
 int bp_peer_srh_socketv6(struct bfd_session *bs);
@@ -816,6 +828,19 @@ void bfdd_sessions_enable_vrf(struct vrf *vrf);
 void bfdd_sessions_disable_vrf(struct vrf *vrf);
 
 int ptm_bfd_notify(struct bfd_session *bs, uint8_t notify_state);
+
+/* Forward declaration for LAG member structure */
+struct bfd_lag_member;
+
+/**
+ * Notify zebra about LAG member BFD state change.
+ *
+ * \param member the LAG member structure
+ * \param bfd_up true if BFD session is up, false if down
+ *
+ * \returns 0 on success, -1 on failure
+ */
+int ptm_bfd_notify_lag_member(struct bfd_lag_member *member, bool bfd_up);
 
 /*
  * dplane.c
